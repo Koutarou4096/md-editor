@@ -1,4 +1,4 @@
-# MARKDOWN EDITOR V1
+# MARKDOWN EDITOR v1
 
 これは元々自分用に作ったものですが、便利だし他の人にも使ってほしいと思い公開しました。
 
