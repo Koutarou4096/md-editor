@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MARKDOWN EDITOR</title>
+
+<!-- Markdown→HTML変換ライブラリ「marked.js」をCDNから読み込み。
+     marked.parse("# 見出し") のように呼ぶとHTML文字列を返してくれる。
+     このページの「変換処理」の中身はほぼ全てこのライブラリ任せ。 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+
+<!-- Googleフォントを読み込み。preconnectはDNS接続を先に済ませて表示を速くするおまじない -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;600;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  /* ==========================================================
+     デザイントークン（色をここに集約）
+     以後、colorやbackgroundは直接指定せず var(--変数名) で参照する。
+     ここの値だけ書き換えれば全体の配色が一括で変わる仕組み。
+  ========================================================== */
+  :root{
+    --paper: #faf7f0;       /* 背景の紙色 */
+    --paper-line: #847f73;  /* 罫線・区切り線の色 */
+    --ink: #000000;         /* 基本の文字色（黒） */
+    --ink-soft: #5B6670;    /* 補助テキストの色（少し薄いグレー） */
+    --hanko: #B23A2E;       /* アクセントカラー（朱色）。ボタンやロゴにのみ使用 */
+    --hanko-dark: #8C2C22;  /* hankoのホバー時の濃い版 */
+    --preview-bg: #FFFFFF;  /* プレビュー側の背景（白紙） */
+    --gutter: #EFE9DA;      /* 未使用の予備カラー */
+    --shadow: rgba(35,48,58,0.08);
+  }
+
+  /* box-sizing:border-box … padding/borderをwidthに含めて計算する設定。
+     これを全要素に効かせておくと、幅の計算が直感的になりレイアウト崩れが減る */
+  *{box-sizing:border-box;}
+
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Noto Sans JP',sans-serif;
+    overflow:hidden; /* ページ全体はスクロールさせない（内部の各ペインだけスクロールする設計） */
+  }
+
+  /* 画面全体を「上：ヘッダー／下：エディタ+プレビュー」の縦積みにする */
+  .app{
+    display:flex;
+    flex-direction:column;
+    height:100vh; /* ビューポート（画面）の高さいっぱいに広げる */
+  }
+
+  header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between; /* 左（ロゴ）と右（ツールバー）を両端に振り分け */
+    padding:14px 24px;
+    border-bottom:1px solid var(--paper-line);
+    background:var(--paper);
+    flex-shrink:0; /* ウィンドウが縮んでもヘッダーの高さは潰れないようにする */
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+
+  /* 左上の丸い印鑑風ロゴ（"MD"の文字が入る部分） */
+  .hanko-mark{
+    width:34px;height:34px;
+    border-radius:50%; /* 正方形を円にする */
+    border:2px solid var(--hanko);
+    display:flex;
+    align-items:center;
+    justify-content:center; /* 中の文字を縦横中央に配置 */
+    font-family:'Shippori Mincho',serif;
+    font-weight:800;
+    color:var(--hanko);
+    font-size:12px;
+    letter-spacing:-.02em;
+    flex-shrink:0;
+    transition:transform .25s ease;
+  }
+  /* ファイル保存時にJS側で .saved クラスを一瞬付け外しし、
+     その間だけ下のstampアニメーションを再生させる（＝「押印」演出） */
+  .hanko-mark.saved{
+    animation:stamp .35s ease;
+  }
+  @keyframes stamp{
+    0%{transform:scale(1.6);opacity:0;}
+    60%{transform:scale(0.92);opacity:1;}
+    100%{transform:scale(1);}
+  }
+
+  .brand-text h1{
+    font-family:'Shippori Mincho',serif;
+    font-size:18px;
+    font-weight:600;
+    margin:0;
+    letter-spacing:.03em;
+  }
+  .brand-text p{
+    margin:0;
+    font-size:11px;
+    color:var(--ink-soft);
+    letter-spacing:.08em;
+  }
+
+  .toolbar{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  /* 右上の「〇〇文字」表示。JS側で入力のたびに書き換えている */
+  .status{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    font-family:'JetBrains Mono',monospace;
+    min-width:120px; /* 文字数の桁が増えてもボタン位置がガタつかないよう幅を確保 */
+    text-align:right;
+  }
+
+  button{
+    font-family:'Noto Sans JP',sans-serif;
+    font-size:12.5px;
+    font-weight: 500;
+    border:1px solid var(--paper-line);
+    background:var(--paper);
+    color:var(--ink);
+    padding:8px 14px;
+    border-radius:3px;
+    cursor:pointer;
+    transition:border-color .15s ease, color .15s ease; /* ホバー時の色変化をなめらかに */
+  }
+  button:hover{
+    border-color:var(--hanko);
+    color:var(--hanko-dark);
+  }
+  /* キーボード操作（Tabキーなど）でフォーカスした時だけ枠線を表示。
+     マウスクリックでは表示されないので見た目がうるさくならない */
+  button:focus-visible, textarea:focus-visible{
+    outline:2px solid var(--hanko);
+    outline-offset:1px;
+  }
+  /* 「クリア」ボタンなど、目立たせたいボタン用の塗りつぶしスタイル */
+  button.primary{
+    background:var(--hanko);
+    border-color:var(--hanko);
+    color:#fff;
+  }
+  button.primary:hover{
+    background:var(--hanko-dark);
+    border-color:var(--hanko-dark);
+    color:#fff;
+  }
+
+  /* ==========================================================
+     左右分割エリア（エディタ／プレビュー）
+     Flexboxで2つのペインを横並びにしているだけのシンプルな構造
+  ========================================================== */
+  .panes{
+    flex:1; /* ヘッダー以外の残り高さを全部使う */
+    display:flex;
+    min-height:0; /* flex子要素の中で正しくスクロールさせるためのおまじない */
+  }
+  .pane{
+    flex:1; /* 初期状態は左右均等割り（後でJSがeditorPane側の比率だけ動的に変更する） */
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+  }
+  .pane-label{
+    font-family:'Noto Sans JP',sans-serif;
+    font-size:12.5px;
+    font-weight: 700;
+    letter-spacing:.12em;
+    color:var(--ink-soft);
+    padding:8px 20px;
+    border-bottom:1px solid var(--paper-line);
+    flex-shrink:0;
+    text-transform:uppercase;
+  }
+
+  /* エディタ側の背景：原稿用紙の罫線を再現している部分。
+     repeating-linear-gradientで28px間隔の横線を延々と繰り返し描画している。
+     textareaのline-height(28px)と数値を合わせることで、
+     入力した文字が罫線の上にきれいに乗るようになっている */
+  #editorPane{
+    background:
+      linear-gradient(var(--paper) 0, var(--paper) 100%),
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent 27px,
+        var(--paper-line) 27px,
+        var(--paper-line) 28px
+      );
+    border-right:1px solid var(--paper-line);
+  }
+  textarea{
+    flex:1;
+    width:100%;
+    resize:none; /* ユーザーがドラッグしてサイズ変更できないようにする（レイアウトが崩れるため） */
+    border:none;
+    outline:none;
+    background:transparent; /* 親要素(#editorPane)の罫線背景を透過して見せる */
+    font-family:'JetBrains Mono',monospace;
+    font-size:14px;
+    line-height:28px; /* 上の罫線間隔と一致させている数値 */
+    color:var(--ink);
+    padding:12px 24px 40px 24px;
+    caret-color:var(--hanko); /* 入力カーソルの色だけ朱色に */
+  }
+  textarea::placeholder{
+    color:#B9B0A0;
+  }
+
+  /* 中央の可動式ボーダー。JS側でmousedown/mousemoveと連携し、
+     ドラッグ量に応じて#editorPaneのflex比率を書き換えることで幅を可変にしている */
+  .divider{
+    width:1px;
+    background:var(--paper-line);
+    flex-shrink:0;
+    cursor:col-resize; /* 横方向にリサイズ可能なことを示すカーソル形状 */
+    position:relative;
+  }
+  .divider:hover{ background:var(--hanko); }
+  .divider::after{
+    /* 実際の見た目は1pxだが、クリック（ドラッグ開始）できる当たり判定を
+       左右4pxずつ広げて、細い線でも掴みやすくしている */
+    content:'';
+    position:absolute;
+    top:0;left:-4px;right:-4px;bottom:0;
+  }
+
+  #previewPane{
+    background:var(--preview-bg);
+  }
+  /* プレビュー領域：marked.jsが生成したHTMLがここに流し込まれる（JS側 preview.innerHTML = ...） */
+  #preview{
+    flex:1;
+    overflow-y:auto; /* ここだけ独立してスクロールする */
+    padding:20px 32px 60px 32px;
+    font-family:'Noto Sans JP',sans-serif;
+    font-size:15px;
+    line-height:1.85;
+    color:var(--ink);
+  }
+
+  /* --- 以下、marked.jsが出力する各種HTMLタグ（h1, table, code等）への見た目付け ---
+     全て白黒（グレースケール）ベースに統一している。装飾に色を使わないことで
+     印刷・PDF化した時も意図通りの見た目になる */
+  #preview h1,#preview h2,#preview h3,#preview h4{
+    font-family:'Noto Sans JP',sans-serif;
+    font-weight:600;
+    color:var(--ink);
+    line-height:1.4;
+  }
+  #preview h1{
+    font-size:28px;
+    border-bottom:2px solid var(--ink);
+    padding-bottom:10px;
+    margin:8px 0 20px;
+  }
+  #preview h2{
+    font-size:21px;
+    margin:32px 0 14px;
+    border-left:4px solid var(--ink);
+    padding-left:10px;
+  }
+  #preview h3{ font-size:17px; margin:24px 0 10px; }
+  #preview p{ margin:0 0 16px; }
+  #preview a{ color:var(--ink); text-decoration:underline; } /* 色に頼らず下線で判別できるように */
+  #preview code{
+    font-family:'JetBrains Mono',monospace;
+    background:#EEEEEE;
+    padding:2px 6px;
+    border-radius:3px;
+    font-size:13px;
+  }
+  #preview pre{
+    background:var(--ink); /* コードブロックだけは黒背景（可読性優先で例外的にモノクロ反転） */
+    color:#F3EFE4;
+    padding:16px 18px;
+    border-radius:5px;
+    overflow-x:auto;
+    margin:0 0 18px;
+  }
+  #preview pre code{
+    background:none;
+    padding:0;
+    color:inherit;
+  }
+  #preview blockquote{
+    margin:0 0 18px;
+    padding:4px 18px;
+    border-left:3px solid #BBBBBB;
+    color:var(--ink-soft);
+  }
+  #preview ul,#preview ol{ margin:0 0 16px; padding-left:24px; }
+  #preview li{ margin-bottom:6px; }
+  #preview table{
+    border-collapse:collapse;
+    width:100%;
+    margin:0 0 18px;
+    font-size:14px;
+  }
+  #preview th,#preview td{
+    border:1px solid #999999;
+    padding:8px 12px;
+    text-align:left;
+  }
+  #preview th{
+    background:#EEEEEE;
+    font-weight:600;
+  }
+  #preview img{ max-width:100%; border-radius:4px; filter:grayscale(100%); } /* 画像も強制的に白黒化 */
+  #preview hr{
+    border:none;
+    border-top:1px solid #BBBBBB;
+    margin:28px 0;
+  }
+  /* :empty は「子要素が何もない状態」にだけ効くセレクタ。
+     preview.innerHTMLが空文字のときだけプレースホルダー文言を表示する */
+  #preview:empty::before{
+    content:'ここにプレビューが表示されます';
+    color:#B9B0A0;
+  }
+
+  /* 画面幅760px以下（スマホなど）では左右分割をやめて縦積みにするレスポンシブ対応 */
+  @media (max-width: 760px){
+    .panes{ flex-direction:column; }
+    .divider{ display:none; } /* 縦積み時はドラッグ分割UIも不要なので非表示 */
+    #editorPane{ border-right:none; border-bottom:1px solid var(--paper-line); }
+    .brand-text p{ display:none; }
+    .status{ display:none; }
+  }
+
+  /* OS側で「アニメーション減らす」設定をしているユーザーには
+     押印アニメーションを無効化する（アクセシビリティ配慮） */
+  @media (prefers-reduced-motion: reduce){
+    .hanko-mark.saved{ animation:none; }
+  }
+
+  /* ==========================================================
+     印刷／PDF保存専用のスタイル。
+     window.print() が呼ばれた瞬間だけこのブロックが有効になり、
+     画面表示用のCSSは一切変更されない。
+  ========================================================== */
+  @media print{
+    body{ overflow:visible; }
+    /* ヘッダー・エディタ・仕切り線など「紙に残す必要のないUI」を印刷時だけ非表示にする */
+    header, .pane-label, .divider, #editorPane{ display:none !important; }
+    .app, .panes{ height:auto; display:block; } /* 画面用のFlexレイアウトを解除し、通常の縦流しに戻す */
+    #previewPane{ display:block; }
+    #preview{
+      overflow:visible; /* 画面ではスクロールだったが、印刷では複数ページに自然に分割させる */
+      padding:0;
+      font-size:12.5pt;
+      line-height:1.7;
+    }
+    #preview pre{
+      white-space:pre-wrap; /* 長いコード行が紙からはみ出さないよう折り返す */
+      word-break:break-word;
+    }
+    #preview h1, #preview h2, #preview h3{
+      break-after:avoid; /* 見出し直後でページが切り替わらないようにする */
+    }
+    #preview img, #preview table, #preview pre, #preview blockquote{
+      break-inside:avoid; /* 表や画像が途中でページをまたいで分断されないようにする */
+    }
+  }
+</style>
+</head>
+
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="hanko-mark" id="hankoMark">MD</div>
+      <div class="brand-text">
+        <h1>MARKDOWN EDITOR</h1>
+        <p>©Kasuga Kosuke made with Claude</p>
+      </div>
+      <!-- onclick="location.href=..." … クリックした瞬間、現在のタブでそのURLへ遷移する最も簡易な実装。
+           addEventListenerを使わずHTML属性に直接書くやり方（ボタン数が少ないため可読性優先でこの形にできる） -->
+      <button onclick="location.href='https://github.com/Koutarou4096/md-editor/blob/main/README.md'">READMEを読む</button>
+      <button onclick="location.href='https://forms.gle/mKzEKbLM7ak1PeKD9'">バグ報告フォーム</button>
+    </div>
+    <div class="toolbar">
+      <span class="status" id="statusText">0 文字</span>
+      <button id="downloadMdBtn">.md を保存</button>
+      <button id="downloadHtmlBtn">HTML を保存</button>
+      <button id="printBtn">印刷 / PDF保存</button>
+      <button class="primary" id="clearBtn">クリア</button>
+    </div>
+  </header>
+
+  <div class="panes">
+    <div class="pane" id="editorPane">
+      <div class="pane-label">EDITOR</div>
+      <!-- spellcheck="false" … ブラウザ標準のスペルチェック下線（赤波線）を無効化。
+           Markdown記法やコードが誤字扱いされてノイズになるのを防ぐ -->
+      <textarea id="editor" spellcheck="false" placeholder="ここにMarkdownを入力してください…
+
+# 見出し
+本文を書きます。
+
+- リスト項目1
+- リスト項目2
+
+```コード``` や **太字** も使えます。"></textarea>
+    </div>
+    <div class="divider" id="divider"></div>
+    <div class="pane" id="previewPane">
+      <div class="pane-label">PREVIEW</div>
+      <div id="preview"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ==========================================================
+  // よく使うDOM要素を最初にまとめて取得しておく
+  // （毎回 document.getElementById(...) を書くのを避けるため）
+  // ==========================================================
+  const editor = document.getElementById('editor');
+  const preview = document.getElementById('preview');
+  const statusText = document.getElementById('statusText');
+  const hankoMark = document.getElementById('hankoMark');
+  const divider = document.getElementById('divider');
+  const panes = document.querySelector('.panes');
+  const editorPane = document.getElementById('editorPane');
+
+  // marked.jsの変換オプション設定
+  // breaks: true  … Markdown内の改行(\n)をそのまま<br>として扱う（GitHubのMarkdownと違い、
+  //                  一般的なメモ帳感覚で改行がそのまま反映されるようにするため）
+  // gfm: true     … GitHub Flavored Markdown（表・取り消し線など拡張記法）を有効化
+  marked.setOptions({ breaks: true, gfm: true });
+
+  // localStorageに保存する際のキー名。
+  // localStorageは「同じオリジン（同じドメイン）× 同じブラウザ」内だけで完結するデータ保存領域。
+  // サーバーには一切送信されないので、他人のブラウザから見えることはない。
+  const STORAGE_KEY = 'markdown-editor-autosave';
+
+  // 初回アクセス時（＝まだ何も保存されていない時）に表示するサンプル文
+  const SAMPLE = "# ようこそ\n\n左側に **Markdown** を入力すると、右側にリアルタイムでプレビューが表示されます。\n\n## 使い方\n\n1. 左のエリアに文章を書く\n2. 右側でそのまま確認できる\n3. 完成したら「.md を保存」または「HTML を保存」\n\n> コードブロックや表、リンクにも対応しています。\n\n```js\nconsole.log('Hello, Markdown!');\n```\n\n| 項目 | 対応 |\n| --- | --- |\n| 見出し | ○ |\n| リスト | ○ |\n| 表 | ○ |\n";
+
+  // --------------------------------------------------------
+  // 自動保存（デバウンス処理）
+  // 1文字打つたびにlocalStorageへ書き込むと無駄が多いので、
+  // 「最後の入力から400ミリ秒操作がなかったら保存する」という
+  // “デバウンス”という定番テクニックを使っている。
+  // 例：連続で10文字打っても、保存処理が実際に走るのは打ち終わった後の1回だけ。
+  // --------------------------------------------------------
+  let saveTimer = null;
+  function scheduleAutosave(){
+    clearTimeout(saveTimer); // 前回予約したタイマーをキャンセルし、待ち時間をリセット
+    saveTimer = setTimeout(() => {
+      try{
+        localStorage.setItem(STORAGE_KEY, editor.value);
+      }catch(e){
+        // プライベートブラウジングモードなど、localStorageが使えない環境では
+        // エラーを無視して機能を諦める（自動保存が効かないだけで他の機能は動く）
+      }
+    }, 400);
+  }
+
+  // --------------------------------------------------------
+  // プレビュー再描画関数。
+  // これがこのアプリの心臓部で、呼ばれるたびに
+  // 1) textareaの中身を取得
+  // 2) marked.parse()でHTML文字列に変換
+  // 3) #previewの中身を丸ごと差し替え
+  // 4) 文字数カウントを更新
+  // という4ステップを毎回ゼロからやり直している（差分更新はしていない単純な作り）
+  // --------------------------------------------------------
+  function render(){
+    const text = editor.value;
+    preview.innerHTML = marked.parse(text);
+    statusText.textContent = text.length.toLocaleString('ja-JP') + ' 文字';
+  }
+
+  // textareaの中身が1文字でも変化した瞬間に発火する'input'イベントに
+  // render()（即時反映）とscheduleAutosave()（保存予約）の両方を登録
+  editor.addEventListener('input', () => {
+    render();
+    scheduleAutosave();
+  });
+
+  // --------------------------------------------------------
+  // ページ読み込み時の初期化処理。
+  // localStorageに前回の保存データがあればそれを復元し、
+  // なければサンプル文を表示する。
+  // --------------------------------------------------------
+  let restored = false;
+  try{
+    const saved = localStorage.getItem(STORAGE_KEY);
+    // null（未保存）でも空文字（全消去された状態）でもない場合だけ復元する
+    if (saved !== null && saved !== ''){
+      editor.value = saved;
+      restored = true;
+    }
+  }catch(e){
+    // localStorageが使えない環境では無視してサンプル表示にフォールバック
+  }
+  if (!restored){
+    editor.value = SAMPLE;
+  }
+  render(); // 復元・サンプルどちらの場合も、最後に必ず一度プレビューを描画する
+
+  //再読み込みなどで開きなおした際にキャッシュから呼び出す
+  // → 復元が行われた場合だけ、右上のステータス表示を一時的に
+  //   「前回の内容を復元しました」に差し替え、5秒後に元の文字数表示へ戻す
+  if (restored){
+    const original = statusText.textContent;
+    statusText.textContent = '前回の内容を復元しました';
+    setTimeout(() => { statusText.textContent = original; }, 5000);
+  }
+
+  // 「押印」アニメーション用の関数。
+  // 一度クラスを外してから（void要素.offsetWidthで強制的に再描画させて）
+  // 再度付け直すことで、同じアニメーションを何度でも再生できるようにしている
+  // （クラスが既に付いた状態でもう一度付けてもCSSアニメーションは再生されないため、
+  //  一度剥がしてブラウザに"リセットされた"と認識させる必要がある）
+  function stampSave(){
+    hankoMark.classList.remove('saved');
+    void hankoMark.offsetWidth; // リフローを強制発生させるためのテクニック
+    hankoMark.classList.add('saved');
+  }
+
+  // --------------------------------------------------------
+  // ファイルダウンロード共通処理。
+  // サーバーを介さず、ブラウザだけでファイル保存を実現する仕組み：
+  // 1) Blob … テキストデータを「ファイルの塊」オブジェクトに変換
+  // 2) URL.createObjectURL … そのBlobを指す一時的なURL（blob://...）を発行
+  // 3) 見えない<a>タグをその場で生成し、download属性でファイル名を指定
+  // 4) JSから.click()を呼んでユーザーの代わりにクリックさせる
+  // 5) 用が済んだら要素とURLを片付ける（メモリリーク防止）
+  // --------------------------------------------------------
+  function downloadFile(filename, content, mime){
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url); // 発行した一時URLを解放
+    stampSave(); // 保存成功の合図として押印アニメーションを再生
+  }
+
+  document.getElementById('downloadMdBtn').addEventListener('click', () => {
+    downloadFile('document.md', editor.value, 'text/markdown;charset=utf-8');
+  });
+
+  document.getElementById('downloadHtmlBtn').addEventListener('click', () => {
+    // marked.parse()で変換したHTML本体を、最低限のHTML雛形（DOCTYPE/head/body）で包んで
+    // 単体で開けるHTMLファイルとして書き出す
+    const html = '<!DOCTYPE html>\n<html lang="ja"><head><meta charset="UTF-8"><title>document</title></head><body>\n' + marked.parse(editor.value) + '\n</body></html>';
+    downloadFile('document.html', html, 'text/html;charset=utf-8');
+  });
+
+  // 印刷ボタン：ブラウザ標準のwindow.print()を呼ぶだけ。
+  // 見た目の制御は上のCSS「@media print」ブロック側が全て担当しており、
+  // JS側では特別な変換処理は一切行っていない
+  document.getElementById('printBtn').addEventListener('click', () => {
+    window.print();
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    // すでに空欄なら確認なしで即クリア、何か書いてある場合だけ確認ダイアログを出す
+    if (editor.value.trim() === '' || confirm('入力内容をすべて消去しますか？（自動保存のキャッシュも削除されます）')) {
+      editor.value = '';
+      render();
+      try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
+      editor.focus();
+    }
+  });
+
+  // --------------------------------------------------------
+  // 中央の仕切り線をドラッグして、エディタとプレビューの幅比率を変える機能。
+  // 3つのイベントの連携で実現している：
+  //   mousedown（仕切り線の上）→ ドラッグ開始フラグON
+  //   mousemove（画面全体）    → ドラッグ中ならマウスX座標から比率を計算し反映
+  //   mouseup（画面全体）      → ドラッグ終了フラグOFF
+  // mousemove/mouseupをdivider自体ではなくwindowに付けているのは、
+  // マウスが仕切り線から外れて動いてもドラッグ操作を追従させ続けるため
+  // --------------------------------------------------------
+  let dragging = false;
+  divider.addEventListener('mousedown', () => {
+    dragging = true;
+    document.body.style.cursor = 'col-resize'; // ドラッグ中は画面全体のカーソル形状も変える
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return; // ドラッグ中でなければ何もしない
+    const rect = panes.getBoundingClientRect(); // panes要素の画面上の位置とサイズを取得
+    // マウスのX座標が、panes全体の中で左から何%の位置にあるかを0〜1の比率で算出
+    let ratio = (e.clientX - rect.left) / rect.width;
+    // 比率が0.2〜0.8の範囲を超えないように制限（片方のペインが極端に潰れるのを防ぐ）
+    ratio = Math.min(0.8, Math.max(0.2, ratio));
+    // flexの比率（grow値）を書き換えることで、CSSの再計算だけで幅が変わるようにする
+    editorPane.style.flex = ratio + ' 1 0';
+  });
+  window.addEventListener('mouseup', () => {
+    dragging = false;
+    document.body.style.cursor = '';
+  });
+
+  // Tabキーの既定動作（フォーカスが次のボタン等へ移動してしまう）を止めて、
+  // 代わりに半角スペース2つをカーソル位置に挿入するインデント処理
+  editor.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault(); // ブラウザ標準のTab移動をキャンセル
+      const start = editor.selectionStart; // カーソル（選択範囲）の開始位置
+      const end = editor.selectionEnd;     // カーソル（選択範囲）の終了位置
+      // 選択範囲の前後の文字列の間にスペース2つを挟み込む形で文字列を組み立て直す
+      editor.value = editor.value.slice(0, start) + '  ' + editor.value.slice(end);
+      // 挿入したスペースの直後にカーソルを移動させる
+      editor.selectionStart = editor.selectionEnd = start + 2;
+      render(); // インデント挿入もテキスト変更なのでプレビューを再描画
+    }
+  });
+</script>
+</body>
+</html>
