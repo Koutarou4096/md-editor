@@ -2,9 +2,11 @@
 [<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/f61a1309-e080-439e-82bf-42a5c5547b7c" />](https://koutarou4096.github.io/md-editor)
 
 ## はじめに
+WEB上で動かせるシンプル・軽量なマークダウンエディターです。
+
 これは元々自分用に作ったものですが、便利だし他の人にも使ってほしいと思い公開しました。
 
-僕には完全に自作できるほどの技術力と時間がないので、一部デザインやバグ修正などを除いて、ほぼ全部Claudeの力を借りて作りました。
+~~まあ言ってしまえばObsidianとかHedgeDocとかHackMDとかのパクリです~~
 
 ## できること・機能
 - マークダウン記法を用いることにより、比較的簡単に見栄えの良い文書を作成できます。
