@@ -514,10 +514,11 @@
   // → 復元が行われた場合だけ、右上のステータス表示を一時的に
   //   「前回の内容を復元しました」に差し替え、5秒後に元の文字数表示へ戻す
   if (restored){
-    const original = statusText.textContent;
-    statusText.textContent = '前回の内容を復元しました';
-    setTimeout(() => { statusText.textContent = original; }, 5000);
-  }
+  statusText.textContent = '前回の内容を復元しました';
+  setTimeout(() => {
+    statusText.textContent = editor.value.length.toLocaleString('ja-JP') + ' 文字'; // 固定値でなく、発火時点の最新文字数を再計算
+  }, 5000);
+}
 
   // 「押印」アニメーション用の関数。
   // 一度クラスを外してから（void要素.offsetWidthで強制的に再描画させて）
@@ -594,16 +595,16 @@
     dragging = true;
     document.body.style.cursor = 'col-resize'; // ドラッグ中は画面全体のカーソル形状も変える
   });
-  window.addEventListener('mousemove', (e) => {
-    if (!dragging) return; // ドラッグ中でなければ何もしない
-    const rect = panes.getBoundingClientRect(); // panes要素の画面上の位置とサイズを取得
-    // マウスのX座標が、panes全体の中で左から何%の位置にあるかを0〜1の比率で算出
-    let ratio = (e.clientX - rect.left) / rect.width;
-    // 比率が0.2〜0.8の範囲を超えないように制限（片方のペインが極端に潰れるのを防ぐ）
-    ratio = Math.min(0.8, Math.max(0.2, ratio));
-    // flexの比率（grow値）を書き換えることで、CSSの再計算だけで幅が変わるようにする
-    editorPane.style.flex = ratio + ' 1 0';
-  });
+  const previewPane = document.getElementById('previewPane'); // 追加：DOM要素取得（既存のeditorPane等と並べて上部で取得しておくのが望ましい）
+
+window.addEventListener('mousemove', (e) => {
+  if (!dragging) return;
+  const rect = panes.getBoundingClientRect();
+  let ratio = (e.clientX - rect.left) / rect.width;
+  ratio = Math.min(0.8, Math.max(0.2, ratio));
+  editorPane.style.flex = ratio + ' 1 0';
+  previewPane.style.flex = (1 - ratio) + ' 1 0'; // 追加：反対側の比率も明示的に設定
+});
   window.addEventListener('mouseup', () => {
     dragging = false;
     document.body.style.cursor = '';
