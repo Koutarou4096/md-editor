@@ -1,4 +1,4 @@
-# MARKDOWN EDITOR v1
+# md-editor v1.0
 [<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/f61a1309-e080-439e-82bf-42a5c5547b7c" />](https://koutarou4096.github.io/md-editor)
 
 ## はじめに
@@ -6,7 +6,7 @@ WEB上で動かせるシンプル・軽量でどこにでもあるようなマ�
 
 これは元々自分用に作ったものですが、便利だし他の人にも使ってほしいと思い公開しました。
 
-~~まあ言ってしまえばHedgeDocとかHackMDとかのパクリのようなものです。~~
+~~まあ言ってしまえばHedgeDocとかHackMDの劣化コピーのようなものです。~~
 
 ## できること・機能
 - マークダウン記法を用いることにより、比較的簡単に見栄えの良い文書を作成できます。
