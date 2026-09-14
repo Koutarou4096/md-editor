@@ -16,5 +16,10 @@ WEB上で動かせる簡易的なマークダウンエディターです。
 GitHub Pagesにて公開しています。以下のURLよりアクセスできます。<br>
 https://koutarou4096.github.io/md-editor/
 
+## 制作環境・検証環境
+- Visual Studio Code
+- Claude Desktop
+- Google Chrome 152.0.7977.83
+
 
 2026 © こっちっちー
