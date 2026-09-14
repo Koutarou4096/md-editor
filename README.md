@@ -1,4 +1,4 @@
-# md-editor v1.0
+# md-editor v1.1
 [<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/f61a1309-e080-439e-82bf-42a5c5547b7c" />](https://koutarou4096.github.io/md-editor)
 
 ## はじめに
@@ -15,9 +15,6 @@ WEB上で動かせる簡易的なマークダウンエディターです。
 ## 公開先
 GitHub Pagesにて公開しています。以下のURLよりアクセスできます。<br>
 https://koutarou4096.github.io/md-editor/
-
-## 免責事項
-本アプリおよびリポジトリの運用・利用により如何なる損害が発生しても、当方に故意または重大な過失がある場合を除き、一切の責任を負いません。
 
 
 2026 © こっちっちー
