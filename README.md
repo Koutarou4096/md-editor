@@ -1,8 +1,8 @@
 # md-editor v1.1
+WEB上で動かせる簡易的なマークダウンエディターです。
+
 [<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/f61a1309-e080-439e-82bf-42a5c5547b7c" />](https://koutarou4096.github.io/md-editor)
 
-## はじめに
-WEB上で動かせる簡易的なマークダウンエディターです。
 
 ## できること・機能
 - マークダウン記法を用いることにより、比較的簡単に見栄えの良い文書を作成できます。
