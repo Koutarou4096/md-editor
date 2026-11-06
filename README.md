@@ -16,7 +16,6 @@ GitHub Pagesにて公開しています。以下のURLからアクセスでき�
 https://koutarou4096.github.io/md-editor/
 
 ## 制作環境・検証環境
-- Claude Desktop
 - Visual Studio Code
 - Google Chrome 152.0.7977.83
 
