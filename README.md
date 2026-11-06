@@ -20,4 +20,4 @@ https://koutarou4096.github.io/md-editor/
 - Google Chrome 152.0.7977.83
 
 
-2026.06 © Koutarou4096
+初回コミット：2026.07 © Koutarou4096
