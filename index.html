@@ -1766,15 +1766,36 @@ spanタグを使えば、文字を大きくすることもできます。（プ�
        READMEボタン
        ========================================================== */
 
-    readmeBtn.addEventListener(
-      'click',
-      () => {
+    const README_URL =
+      'https://raw.githubusercontent.com/Koutarou4096/md-editor/main/README.md';
 
-        location.href =
-          'https://github.com/Koutarou4096/md-editor/blob/main/README.md';
+    readmeBtn.addEventListener('click', async () => {
 
+      // 入力中の内容を上書きしてしまうので確認する
+      if (
+        editor.value.trim() !== '' &&
+        !confirm('エディタの内容がREADMEで置き換わります。よろしいですか？')
+      ) {
+        return;
       }
-    );
+
+      try {
+        const res = await fetch(README_URL);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        editor.value = await res.text();
+
+        // valueを直接書き換えてもinputイベントは発火しないので、手動で呼ぶ
+        render();
+        scheduleAutosave();
+
+        editor.scrollTop = 0;
+
+      } catch (error) {
+        alert('READMEを取得できませんでした。ネット接続を確認してください。');
+      }
+
+    });
 
 
     /* ==========================================================
