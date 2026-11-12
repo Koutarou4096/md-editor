@@ -17,6 +17,6 @@ https://koutarou4096.github.io/md-editor/
 
 ## 制作環境・検証環境
 - Visual Studio Code
-- Google Chrome 152.0.7977.83
+- Windows11(26H2) / Google Chrome 152.0.7977.83
 
 初回コミット：2026.07 © Koutarou4096
